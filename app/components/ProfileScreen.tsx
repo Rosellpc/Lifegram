@@ -7,12 +7,11 @@ import { useRouter } from "next/navigation";
 import { supabase } from "../utils/client";
 import { defaultAvatar } from "../utils/assets";
 import {
-  fetchFollowerIds,
+  fetchFollowingIds,
   fetchProfileById,
   fetchPostsByIds,
   fetchSavedPostIds,
   fetchPostsBundle,
-  type PostRow,
 } from "../utils/social";
 import type { Post } from "../mocks/posts";
 
@@ -75,7 +74,7 @@ export default function ProfileScreen({
       const [profileData, profilePosts, followingIds, viewerSavedIds] = await Promise.all([
         fetchProfileById(supabase, profileId),
         fetchPostsBundle(supabase, { viewerId: user.id, userIds: [profileId] }),
-        fetchFollowerIds(supabase, profileId),
+        fetchFollowingIds(supabase, user.id),
         profileId === user.id ? fetchSavedPostIds(supabase, user.id) : Promise.resolve(new Set<string>()),
       ]);
 
@@ -88,6 +87,9 @@ export default function ProfileScreen({
         .from("follows")
         .select("following_id")
         .eq("follower_id", profileId);
+
+      if (followersRows.error) throw followersRows.error;
+      if (followingRows.error) throw followingRows.error;
 
       if (!active) {
         return;
@@ -102,7 +104,7 @@ export default function ProfileScreen({
       );
       setFollowersCount(followersRows.data?.length ?? 0);
       setFollowingCount(followingRows.data?.length ?? 0);
-      setIsFollowing(followingIds.includes(user.id));
+      setIsFollowing(followingIds.includes(profileId));
       setEditForm({
         username: profileData?.username || "",
         full_name: profileData?.full_name || "",

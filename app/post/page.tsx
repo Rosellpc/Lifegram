@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import RequireAuth from "../components/RequireAuth";
 import { supabase } from "../utils/client";
+import { getErrorMessage } from "../utils/errors";
 
 export default function CreatePage() {
   const router = useRouter();
@@ -76,8 +77,10 @@ export default function CreatePage() {
       });
 
     if (uploadError) {
-      console.error("Error al subir imagen:", uploadError);
-      throw uploadError;
+      if (uploadError.message.toLowerCase().includes("bucket not found")) {
+        throw new Error("No se encontró el almacenamiento de imágenes. Revisa la configuración de Storage del proyecto.");
+      }
+      throw new Error(`No se pudo subir la imagen: ${getErrorMessage(uploadError, "Error de almacenamiento")}`);
     }
 
     const { data: urlData } = supabase.storage
@@ -96,8 +99,7 @@ export default function CreatePage() {
       .select("*");
 
     if (postError) {
-      console.error("Error creando el post:", postError);
-      throw postError;
+      throw new Error(`No se pudo guardar la publicación: ${getErrorMessage(postError, "Error de base de datos")}`);
     }
 
     return {
@@ -131,7 +133,7 @@ export default function CreatePage() {
     } catch (error) {
       setMessage({
         type: "error",
-        text: error instanceof Error ? error.message : "Error al crear el post",
+        text: getErrorMessage(error, "Error al crear el post"),
       });
     } finally {
       setIsLoading(false);

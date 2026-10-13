@@ -7,7 +7,7 @@ import RequireAuth from "./components/RequireAuth";
 import { supabase } from "./utils/client";
 import { defaultAvatar, defaultPostImage } from "./utils/assets";
 import {
-  fetchFollowerIds,
+  fetchFollowingIds,
   fetchPostsBundle,
   fetchStoriesBundle,
   type StoryRow,
@@ -145,7 +145,7 @@ export default function Home() {
         return;
       }
 
-      const followingIds = await fetchFollowerIds(supabase, user.id);
+      const followingIds = await fetchFollowingIds(supabase, user.id);
       const feedUserIds = followingIds.length ? [user.id, ...followingIds] : undefined;
 
       const [feedPosts, feedStories] = await Promise.all([

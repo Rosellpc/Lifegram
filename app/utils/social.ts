@@ -165,7 +165,7 @@ export async function fetchProfileById(
 export async function fetchPostById(client: SupabaseClient, id: string) {
   const { data, error } = await client
     .from("posts")
-    .select("id, user_id, image_url, caption, location, created_at, updated_at, profiles (id, username, avatar_url, full_name, bio, website)")
+    .select("id, user_id, image_url, caption, location, created_at, updated_at, profiles!posts_user_id_fkey (id, username, avatar_url, full_name, bio, website)")
     .eq("id", id)
     .maybeSingle();
 
@@ -197,8 +197,8 @@ export async function fetchCountsByForeignKey(
   }
 
   (data ?? []).forEach((row) => {
-    const key = row[foreignKey];
-    if (!key) return;
+    const key = (row as Record<string, unknown>)[foreignKey];
+    if (typeof key !== "string" || !key) return;
     map.set(key, (map.get(key) ?? 0) + 1);
   });
 
@@ -232,10 +232,15 @@ export async function fetchScopedIdSet(
     throw error;
   }
 
-  return new Set((data ?? []).map((row) => row[selectColumn] as string));
+  return new Set(
+    (data ?? []).flatMap((row) => {
+      const value = (row as Record<string, unknown>)[selectColumn];
+      return typeof value === "string" ? [value] : [];
+    })
+  );
 }
 
-export async function fetchFollowerIds(
+export async function fetchFollowingIds(
   client: SupabaseClient,
   userId: string
 ) {
@@ -294,7 +299,7 @@ export async function fetchPostsByIds(
 
   const { data, error } = await client
     .from("posts")
-    .select("id, user_id, image_url, caption, location, created_at, updated_at, profiles (id, username, avatar_url, full_name, bio, website)")
+    .select("id, user_id, image_url, caption, location, created_at, updated_at, profiles!posts_user_id_fkey (id, username, avatar_url, full_name, bio, website)")
     .in("id", ids)
     .order("created_at", { ascending: false });
 
@@ -331,7 +336,7 @@ export async function fetchPostsBundle(
 ) {
   let postQuery = client
     .from("posts")
-    .select("id, user_id, image_url, caption, location, created_at, updated_at, profiles (id, username, avatar_url, full_name, bio, website)")
+    .select("id, user_id, image_url, caption, location, created_at, updated_at, profiles!posts_user_id_fkey (id, username, avatar_url, full_name, bio, website)")
     .order("created_at", { ascending: false });
 
   if (opts?.userIds?.length) {
@@ -386,7 +391,7 @@ export async function fetchCommentsForPost(
 ) {
   const { data, error } = await client
     .from("comments")
-    .select("id, post_id, user_id, content, created_at, profiles (id, username, avatar_url, full_name)")
+    .select("id, post_id, user_id, content, created_at, profiles!comments_user_id_fkey (id, username, avatar_url, full_name)")
     .eq("post_id", postId)
     .order("created_at", { ascending: true });
 
@@ -404,7 +409,7 @@ export async function fetchStoriesBundle(
   const now = new Date().toISOString();
   let query = client
     .from("stories")
-    .select("id, user_id, media_url, media_type, created_at, expires_at, profiles (id, username, avatar_url, full_name)")
+    .select("id, user_id, media_url, media_type, created_at, expires_at, profiles!stories_user_id_fkey (id, username, avatar_url, full_name)")
     .gt("expires_at", now)
     .order("created_at", { ascending: false });
 

@@ -14,31 +14,27 @@ export default function RequireAuth({
 
   useEffect(() => {
     let active = true;
+    let authChanged = false;
 
-    const ensureSession = async () => {
-      const { data } = await supabase.auth.getSession();
-      if (!active) {
-        return;
-      }
-
-      if (!data.session) {
-        router.replace("/login");
-        return;
-      }
-
-      setReady(true);
+    const updateSession = (hasSession: boolean) => {
+      if (!active) return;
+      setReady(hasSession);
+      if (!hasSession) router.replace("/login");
     };
 
-    ensureSession();
+    const ensureSession = async () => {
+      const { data, error } = await supabase.auth.getSession();
+      // A newer auth event takes precedence over the initial session lookup.
+      if (!authChanged) updateSession(!error && Boolean(data.session));
+    };
 
-    const { data: subscription } = supabase.auth.onAuthStateChange((event, session) => {
-      if (!active) {
-        return;
-      }
+    const { data: subscription } = supabase.auth.onAuthStateChange((_event, session) => {
+      authChanged = true;
+      updateSession(Boolean(session));
+    });
 
-      if (!session && event !== "SIGNED_OUT") {
-        router.replace("/login");
-      }
+    ensureSession().catch(() => {
+      if (!authChanged) updateSession(false);
     });
 
     return () => {

@@ -6,7 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit --incremental false",
+    "test": "node --test scripts/regression.test.cjs",
+    "check:supabase": "node scripts/check-supabase.cjs",
+    "check:supabase:auth": "node scripts/check-supabase-auth.cjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.107.0",

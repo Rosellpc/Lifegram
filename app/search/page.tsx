@@ -6,7 +6,7 @@ import { FormEvent, useEffect, useState } from "react";
 import RequireAuth from "../components/RequireAuth";
 import { supabase } from "../utils/client";
 import { defaultAvatar, defaultPostImage } from "../utils/assets";
-import { fetchPostsBundle } from "../utils/social";
+import { fetchPostsBundle, toPost } from "../utils/social";
 import type { Post } from "../mocks/posts";
 
 type ProfileResult = {
@@ -68,7 +68,7 @@ export default function SearchPage() {
         .order("username", { ascending: true }),
       supabase
         .from("posts")
-        .select("id, user_id, image_url, caption, location, created_at, updated_at, profiles (id, username, avatar_url, full_name, bio, website)")
+        .select("id, user_id, image_url, caption, location, created_at, updated_at, profiles!posts_user_id_fkey (id, username, avatar_url, full_name, bio, website)")
         .ilike("caption", `%${term}%`)
         .order("created_at", { ascending: false }),
     ]);
@@ -82,7 +82,7 @@ export default function SearchPage() {
     if (postRes.error) {
       console.error(postRes.error);
     } else {
-      setPosts((postRes.data ?? []) as Post[]);
+      setPosts((postRes.data ?? []).map((row) => toPost(row)));
     }
 
     setLoading(false);
