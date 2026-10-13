@@ -1,4 +1,4 @@
-// Hola cara de bola
+// Hola cara de bola desde GitHub
 # Suplatzigram
 
 Repositorio del frontend para el Curso de Supabase de Platzi. Aplicación inspirada en Instagram construida con Next.js y Supabase como backend.
