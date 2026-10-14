@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
+import BrandLogo from "../../components/BrandLogo";
 
 type AuthShellProps = {
   title: string;
@@ -26,9 +27,7 @@ export default function AuthShell({
         <div className="grid w-full overflow-hidden glass-panel rounded-[28px] border border-border bg-card-bg md:grid-cols-[1fr_420px]">
           <section className="hidden bg-primary p-10 text-white md:flex md:flex-col md:justify-between">
             <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.2em] text-white/70">
-                Suplatzigram
-              </p>
+              <BrandLogo className="h-8 w-auto max-w-full text-foreground" />
               <h1 className="mt-5 max-w-sm text-4xl font-bold leading-tight">
                 Comparte momentos, encuentra personas, crea comunidad.
               </h1>
@@ -47,9 +46,9 @@ export default function AuthShell({
             <div className="mb-8 text-center">
               <Link
                 href="/"
-                className="text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent"
+                className="inline-block text-foreground"
               >
-                Suplatzigram
+                <BrandLogo className="h-9 w-auto max-w-full" />
               </Link>
               <h2 className="mt-8 text-2xl font-bold text-foreground">
                 {title}

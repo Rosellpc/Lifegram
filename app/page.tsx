@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import RequireAuth from "./components/RequireAuth";
 import NavAvatar from "./components/NavAvatar";
+import BrandLogo from "./components/BrandLogo";
 import { supabase, getCurrentUser } from "./utils/client";
 import { getErrorMessage } from "./utils/errors";
 import { defaultAvatar, defaultPostImage } from "./utils/assets";
@@ -298,8 +299,8 @@ export default function Home() {
         <header className="glass-header sticky top-0 z-40 border-b">
           <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-3">
             <div>
-              <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-                Lifegram
+              <h1>
+                <BrandLogo className="h-6 w-auto text-foreground sm:h-5" />
               </h1>
             </div>
             <Link href="/profile" aria-label="Mi perfil" className="flex h-10 w-10 items-center justify-center rounded-full ring-2 ring-primary">

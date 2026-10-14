@@ -6,12 +6,15 @@
 
 Los mensajes solo son visibles para emisor y destinatario. El chat permite enviar texto (hasta 2000 caracteres), conserva el borrador si falla y carga el historial por páginas. Se vuelve a sincronizar al reconectar. No incluye adjuntos, confirmaciones de lectura ni notificaciones push.
 
-Ejecutar los cuatro archivos SQL en orden en SQL Editor de Supabase, o en un proyecto vinculado mediante `supabase db push`.
+Ejecutar los seis archivos SQL en orden en SQL Editor de Supabase, o en un proyecto vinculado mediante `supabase db push`.
 
 1. `202610130001_schema.sql`: esquema para proyectos nuevos, índices, perfiles de usuarios existentes y trigger para nuevos registros.
 2. `202610130002_rls.sql`: reemplaza las políticas de las ocho tablas usadas por Lifegram; no modifica filas. Contenido social visible a cuentas autenticadas; guardados y notificaciones privados. Restringe escritura al propietario.
 3. `202610130003_counts.sql`: agregación de conteos con RLS del usuario, sin descargar filas.
 4. `202610130004_storage_guards.sql`: impide modificar archivos ajenos incluso si hay políticas antiguas permisivas sobre el bucket images. Conserva el acceso público a las imágenes mediante su URL pública.
+
+5. 202610130005_messages.sql: tabla direct_messages, permisos privados y publicación Realtime.
+6. 202610130006_notifications.sql: índices, permisos privados y publicación Realtime de notificaciones.
 
 El esquema existente se conserva con `create table if not exists`; esto no certifica que coincida con el esquema base. Para registrar el esquema remoto exacto, usar `supabase db pull` en un proyecto vinculado. Revisar antes de aplicar en producción, especialmente políticas personalizadas o triggers existentes de creación de perfiles.
 
