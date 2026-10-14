@@ -21,6 +21,9 @@ importers:
         specifier: 19.3.0
         version: 19.3.0(react@19.3.0)
     devDependencies:
+      '@next/env':
+        specifier: 16.4.0
+        version: 16.4.0
       '@playwright/test':
         specifier: ^1.64.0
         version: 1.64.0
