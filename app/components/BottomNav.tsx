@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useNotifications } from "./NotificationsProvider";
+import NavAvatar from "./NavAvatar";
 
 function HomeIcon({ active }: { active: boolean }) {
   if (active) {
@@ -60,19 +62,6 @@ function BellIcon({ active }: { active: boolean }) {
   );
 }
 
-function ProfileIcon({ active }: { active: boolean }) {
-  return active ? (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6">
-      <path fillRule="evenodd" d="M7.5 6a4.5 4.5 0 119 0 4.5 4.5 0 01-9 0zm-2.25 12A6.75 6.75 0 0112 11.25 6.75 6.75 0 0118.75 18v1.5a.75.75 0 01-.75.75H6a.75.75 0 01-.75-.75V18z" clipRule="evenodd" />
-    </svg>
-  ) : (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 10-7.5 0 3.75 3.75 0 007.5 0z" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 20.25A8.25 8.25 0 0112 15a8.25 8.25 0 017.5 5.25" />
-    </svg>
-  );
-}
-
 function PlusIcon() {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
@@ -83,59 +72,71 @@ function PlusIcon() {
 
 export default function BottomNav() {
   const pathname = usePathname();
+  const { unread } = useNotifications();
 
   if (pathname === "/login" || pathname === "/register") {
     return null;
   }
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-card-bg border-t border-border">
-      <div className="mx-auto grid max-w-2xl grid-cols-5 items-center py-2">
+    <nav aria-label="Navegación principal" className="glass-nav">
+      <div className="grid grid-cols-6 items-center gap-1 px-2 py-2">
         <Link
           href="/"
-          className={`flex flex-col items-center gap-1 px-4 py-2 transition-colors ${
+          aria-current={pathname === "/" ? "page" : undefined}
+          className={`flex flex-col items-center gap-1 px-2 py-2 transition-colors ${
             pathname === "/" ? "text-primary" : "text-foreground/60 hover:text-foreground"
           }`}
         >
           <HomeIcon active={pathname === "/"} />
-          <span className="text-xs font-medium">Home</span>
+          <span className="text-[10px] font-medium">Inicio</span>
         </Link>
 
         <Link
           href="/search"
-          className={`flex flex-col items-center gap-1 px-4 py-2 transition-colors ${
+          aria-current={pathname.startsWith("/search") ? "page" : undefined}
+          className={`flex flex-col items-center gap-1 px-2 py-2 transition-colors ${
             pathname.startsWith("/search") ? "text-primary" : "text-foreground/60 hover:text-foreground"
           }`}
         >
           <SearchIcon active={pathname.startsWith("/search")} />
-          <span className="text-xs font-medium">Search</span>
+          <span className="text-[10px] font-medium">Buscar</span>
         </Link>
 
         <Link
           href="/post"
-          className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-r from-primary to-accent text-white shadow-lg transition-transform hover:scale-105"
+          aria-label="Crear publicación"
+          className="create-button mx-auto flex h-12 w-12 items-center justify-center"
         >
           <PlusIcon />
         </Link>
 
         <Link
           href="/notifications"
-          className={`flex flex-col items-center gap-1 px-4 py-2 transition-colors ${
+          aria-label={unread ? `Actividad, ${unread} sin leer` : "Actividad"}
+          aria-current={pathname.startsWith("/notifications") ? "page" : undefined}
+          className={`flex flex-col items-center gap-1 px-2 py-2 transition-colors ${
             pathname.startsWith("/notifications") ? "text-primary" : "text-foreground/60 hover:text-foreground"
           }`}
         >
-          <BellIcon active={pathname.startsWith("/notifications")} />
-          <span className="text-xs font-medium">Activity</span>
+          <span className="relative"><BellIcon active={pathname.startsWith("/notifications")} />
+          {unread > 0 && <span aria-hidden="true" className="absolute -right-3 -top-2 rounded-full bg-primary px-1.5 text-[10px] font-bold text-white">{unread > 99 ? "99+" : unread}</span>}</span>
+          <span className="text-[10px] font-medium">Actividad</span>
+        </Link>
+        <Link href="/messages" aria-current={pathname.startsWith("/messages") ? "page" : undefined} className="flex flex-col items-center gap-1 px-2 py-2 text-foreground/65">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-6 w-6" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H4l-2 2V11.5A8.5 8.5 0 0 1 10.5 3h2a8.5 8.5 0 0 1 8.5 8.5Z"/></svg>
+          <span className="text-[10px] font-medium">Chat</span>
         </Link>
 
         <Link
           href="/profile"
-          className={`flex flex-col items-center gap-1 px-4 py-2 transition-colors ${
+          aria-current={pathname.startsWith("/profile") ? "page" : undefined}
+          className={`flex flex-col items-center gap-1 px-2 py-2 transition-colors ${
             pathname.startsWith("/profile") ? "text-primary" : "text-foreground/60 hover:text-foreground"
           }`}
         >
-          <ProfileIcon active={pathname.startsWith("/profile")} />
-          <span className="text-xs font-medium">Profile</span>
+          <NavAvatar />
+          <span className="text-[10px] font-medium">Perfil</span>
         </Link>
       </div>
     </nav>

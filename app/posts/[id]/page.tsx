@@ -2,19 +2,20 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import RequireAuth from "../../components/RequireAuth";
-import { supabase } from "../../utils/client";
+import { supabase, getCurrentUser } from "../../utils/client";
+import { getErrorMessage } from "../../utils/errors";
 import { defaultAvatar, defaultPostImage } from "../../utils/assets";
 import {
   fetchCommentsForPost,
   fetchPostById,
-  fetchSavedPostIds,
+  fetchScopedIdSet,
   fetchLikedPostIds,
   toComment,
   toPost,
-  type CommentRow,
   type PostRow,
 } from "../../utils/social";
 import { getTimeAgo } from "../../utils/time";
@@ -47,10 +48,22 @@ function BookmarkIcon({ filled }: { filled: boolean }) {
 export default function PostDetailPage() {
   const params = useParams<{ id: string }>();
   const postId = params.id;
+  const router = useRouter();
+  const [viewerId, setViewerId] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [captionDraft, setCaptionDraft] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [mutating, setMutating] = useState(false);
+  const [retry, setRetry] = useState(0);
+  const interactionLock = useRef(false);
+  const [interacting, setInteracting] = useState(false);
   const [post, setPost] = useState<Post | null>(null);
   const [comments, setComments] = useState<Array<ReturnType<typeof toComment>>>([]);
+  const [hasOlderComments, setHasOlderComments] = useState(false);
+  const [loadingComments, setLoadingComments] = useState(false);
   const [comment, setComment] = useState("");
   const [loading, setLoading] = useState(true);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -58,17 +71,19 @@ export default function PostDetailPage() {
     const load = async () => {
       const {
         data: { user },
-      } = await supabase.auth.getUser();
+      } = await getCurrentUser();
 
       if (!user) {
+        setLoading(false);
         return;
       }
+      setViewerId(user.id);
 
       const [row, commentRows, likedIds, savedIds] = await Promise.all([
         fetchPostById(supabase, postId),
         fetchCommentsForPost(supabase, postId),
-        fetchLikedPostIds(supabase, user.id),
-        fetchSavedPostIds(supabase, user.id),
+        fetchLikedPostIds(supabase, user.id, [postId]),
+        fetchScopedIdSet(supabase,"saved_posts","post_id","user_id",user.id,[postId]),
       ]);
 
       if (!active || !row) {
@@ -82,15 +97,16 @@ export default function PostDetailPage() {
             likePostIds: likedIds,
             savedPostIds: savedIds,
           }),
-          likes: (await supabase.from("post_likes").select("post_id").eq("post_id", postId)).data?.length ?? 0,
+          likes: (await supabase.from("post_likes").select("post_id", { head: true, count: "exact" }).eq("post_id", postId)).count ?? 0,
         }
       );
       setComments(commentRows.map((row) => toComment(row)));
+      setHasOlderComments(commentRows.length === 30);
       setLoading(false);
     };
 
     load().catch((error) => {
-      console.error("Error al cargar el post:", error);
+      setActionError(getErrorMessage(error, "No se pudo cargar la publicación."));
       if (active) {
         setLoading(false);
       }
@@ -99,16 +115,67 @@ export default function PostDetailPage() {
     return () => {
       active = false;
     };
-  }, [postId]);
+  }, [postId, retry]);
+
+  const saveCaption = async () => {
+    if (!post || viewerId !== post.user_id || mutating) return;
+    setMutating(true); setActionError(null);
+    try {
+      const { data, error } = await supabase.from("posts").update({ caption: captionDraft.trim(), updated_at: new Date().toISOString() }).eq("id",post.id).eq("user_id",viewerId).select("id").single();
+      if (error || !data) throw error ?? new Error("La publicación no pudo actualizarse.");
+      setPost({ ...post, caption: captionDraft.trim() }); setEditing(false);
+    } catch(error) { setActionError(getErrorMessage(error,"No se pudo editar. Puedes reintentar.")); }
+    finally { setMutating(false); }
+  };
+
+  const loadOlderComments = async () => {
+    if (!comments.length || loadingComments) return;
+    setLoadingComments(true);setActionError(null);
+    try {
+      const first = comments[0];
+      const older = await fetchCommentsForPost(supabase,postId,{created_at:first.created_at,id:first.id});
+      setComments(previous=>[...older.map(toComment).filter(comment=>!previous.some(item=>item.id===comment.id)),...previous]);
+      setHasOlderComments(older.length===30);
+    } catch(error) {setActionError(getErrorMessage(error,"No se pudieron cargar más comentarios."));}
+    finally {setLoadingComments(false);}
+  };
+
+  const deletePost = async () => {
+    if (!post || viewerId !== post.user_id || mutating) return;
+    setMutating(true); setActionError(null);
+    try {
+      const { data, error } = await supabase.from("posts").delete().eq("id",post.id).eq("user_id",viewerId).select("id").single();
+      if (error || !data) throw error ?? new Error("La publicación no pudo eliminarse.");
+      const imageUrl = new URL(post.image_url);
+      const projectOrigin = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL!).origin;
+      const prefix = "/storage/v1/object/public/images/";
+      if (imageUrl.origin === projectOrigin && imageUrl.pathname.startsWith(prefix)) {
+        const references = await supabase.from("posts").select("id",{count:"exact",head:true}).eq("image_url",post.image_url);
+        if (!references.error && references.count === 0) {
+          const removal = await supabase.storage.from("images").remove([decodeURIComponent(imageUrl.pathname.slice(prefix.length))]);
+          if (removal.error) {
+            setPost(null);
+            setActionError("La publicación se eliminó, pero no se pudo limpiar su imagen. Revisa los permisos de Storage.");
+            return;
+          }
+        }
+      }
+      router.replace("/profile");
+    } catch(error) { setActionError(getErrorMessage(error,"No se pudo eliminar. Puedes reintentar.")); }
+    finally { setMutating(false); }
+  };
 
   const toggleLike = async () => {
+    if (interactionLock.current) return;
+    interactionLock.current = true; setInteracting(true); setActionError(null);
+    try {
     if (!post) {
       return;
     }
 
     const {
       data: { user },
-    } = await supabase.auth.getUser();
+    } = await getCurrentUser();
 
     if (!user) {
       return;
@@ -126,8 +193,8 @@ export default function PostDetailPage() {
       : await supabase.from("post_likes").delete().eq("post_id", post.id).eq("user_id", user.id);
 
     if (error) {
-      console.error(error);
-      setPost((current) => (current ? { ...current, isLiked: !nextIsLiked, likes: current.likes } : current));
+      setActionError(`No se pudo actualizar el like: ${getErrorMessage(error, "Error desconocido")}`);
+      setPost(post);
       return;
     }
 
@@ -139,14 +206,21 @@ export default function PostDetailPage() {
         post_id: post.id,
       });
     }
+    } catch(error) {
+      setPost(post);
+      setActionError(getErrorMessage(error,"No se pudo actualizar el like. Inténtalo de nuevo."));
+    } finally { interactionLock.current=false; setInteracting(false); }
   };
 
   const toggleSave = async () => {
+    if (interactionLock.current) return;
+    interactionLock.current = true; setInteracting(true); setActionError(null);
+    try {
     if (!post) return;
 
     const {
       data: { user },
-    } = await supabase.auth.getUser();
+    } = await getCurrentUser();
 
     if (!user) return;
 
@@ -157,29 +231,37 @@ export default function PostDetailPage() {
       : await supabase.from("saved_posts").insert({ post_id: post.id, user_id: user.id });
 
     if (error) {
-      console.error(error);
+      setActionError(`No se pudo guardar la publicación: ${getErrorMessage(error, "Error desconocido")}`);
       setPost((current) => (current ? { ...current, isSaved: !current.isSaved } : current));
     }
+    } catch(error) {
+      setPost(post);
+      setActionError(getErrorMessage(error,"No se pudo guardar. Inténtalo de nuevo."));
+    } finally { interactionLock.current=false; setInteracting(false); }
   };
 
   const addComment = async () => {
+    if (interactionLock.current) return;
+    interactionLock.current = true; setInteracting(true);
+    setActionError(null);
+    try {
     const content = comment.trim();
     if (!post || !content) return;
 
     const {
       data: { user },
-    } = await supabase.auth.getUser();
+    } = await getCurrentUser();
 
     if (!user) return;
 
-    const { error } = await supabase.from("comments").insert({
+    const { data: createdComment, error } = await supabase.from("comments").insert({
       post_id: post.id,
       user_id: user.id,
       content,
-    });
+    }).select("id").single();
 
     if (error) {
-      console.error(error);
+      setActionError(`No se pudo guardar el comentario: ${getErrorMessage(error, "Error desconocido")}`);
       return;
     }
 
@@ -189,12 +271,17 @@ export default function PostDetailPage() {
         actor_id: user.id,
         type: "comment",
         post_id: post.id,
+        comment_id: createdComment.id,
       });
     }
 
     const nextComments = await fetchCommentsForPost(supabase, post.id);
     setComments(nextComments.map((row) => toComment(row)));
+    setHasOlderComments(nextComments.length === 30);
     setComment("");
+    } catch(error) {
+      setActionError(getErrorMessage(error,"No se pudo completar el comentario. Revisa los comentarios antes de reintentarlo."));
+    } finally { interactionLock.current=false; setInteracting(false); }
   };
 
   if (loading) {
@@ -211,7 +298,8 @@ export default function PostDetailPage() {
     return (
       <RequireAuth>
         <div className="rounded-xl border border-dashed border-border bg-card-bg p-8 text-center text-sm text-foreground/60">
-          No encontramos este post.
+          {actionError || "No encontramos esta publicación."}
+          {actionError && <button type="button" className="ml-3 underline" onClick={() => {setActionError(null);setLoading(true);setRetry(value=>value+1);}}>Reintentar</button>}
         </div>
       </RequireAuth>
     );
@@ -219,32 +307,54 @@ export default function PostDetailPage() {
 
   return (
     <RequireAuth>
-      <div className="min-h-screen bg-background">
+      <div className="min-h-screen">
         <main className="mx-auto grid max-w-5xl gap-6 px-4 py-6 pb-28 lg:grid-cols-[1.2fr_0.8fr]">
-          <section className="overflow-hidden rounded-xl border border-border bg-card-bg shadow-sm">
+          {actionError && (
+            <div role="alert" className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-500 lg:col-span-2">
+              {actionError}
+              <button type="button" onClick={() => { setLoading(true); setActionError(null); setRetry(value => value + 1); }} className="ml-3 underline">Reintentar carga</button>
+            </div>
+          )}
+          {viewerId === post.user_id && (
+            <section className="flex flex-wrap gap-3 lg:col-span-2" aria-label="Gestionar publicación">
+              <button type="button" disabled={mutating} onClick={() => { setCaptionDraft(post.caption); setEditing(true); }} className="rounded border border-border p-2">Editar publicación</button>
+              <button type="button" disabled={mutating} onClick={() => setConfirmDelete(true)} className="rounded border border-red-500 p-2">Eliminar publicación</button>
+              {editing && <div className="w-full grid gap-3">
+                <label>Descripción<textarea maxLength={2200} value={captionDraft} onChange={event => setCaptionDraft(event.target.value)} className="block w-full rounded border border-border bg-card-bg p-3" /></label>
+                <button disabled={mutating} onClick={saveCaption}>Guardar cambios</button>
+                <button disabled={mutating} onClick={() => setEditing(false)}>Cancelar edición</button>
+              </div>}
+              {confirmDelete && <div role="alert" className="w-full">
+                <p>¿Eliminar esta publicación y sus comentarios? Esta acción no se puede deshacer.</p>
+                <button disabled={mutating} onClick={deletePost} className="mr-4 text-red-500">Sí, eliminar</button>
+                <button disabled={mutating} onClick={() => setConfirmDelete(false)}>Cancelar</button>
+              </div>}
+            </section>
+          )}
+          <section className="overflow-hidden glass-panel rounded-[28px] border border-border bg-card-bg">
             <div className="flex items-center gap-3 border-b border-border p-4">
               <div className="relative h-10 w-10 overflow-hidden rounded-full">
-                <Image src={post.user?.avatar || defaultAvatar} alt={post.user?.username || "profile"} fill className="object-cover" />
+                <Image src={post.user?.avatar || defaultAvatar} alt={post.user?.username || "profile"} sizes="64px" fill className="object-cover" />
               </div>
               <div>
                 <Link href={`/profile/${post.user_id}`} className="font-semibold text-foreground">
                   {post.user?.username || "default_user"}
                 </Link>
-                <div className="text-xs text-foreground/50">{getTimeAgo(new Date(post.created_at))}</div>
+                <div className="text-xs text-foreground/65">{getTimeAgo(new Date(post.created_at))}</div>
               </div>
             </div>
 
             <div className="relative aspect-square w-full">
-              <Image src={post.image_url || defaultPostImage} alt={post.caption} fill className="object-cover" />
+              <Image src={post.image_url || defaultPostImage} alt={post.caption} sizes="(max-width: 768px) 100vw, 640px" fill className="object-cover" />
             </div>
 
             <div className="p-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <button onClick={toggleLike} aria-label="like">
+                  <button disabled={interacting || mutating} onClick={toggleLike} aria-label={post.isLiked ? "Quitar like" : "Dar like"}>
                     <HeartIcon filled={post.isLiked || false} />
                   </button>
-                  <button onClick={toggleSave} aria-label="save">
+                  <button disabled={interacting || mutating} onClick={toggleSave} aria-label={post.isSaved ? "Quitar guardado" : "Guardar publicación"}>
                     <BookmarkIcon filled={post.isSaved || false} />
                   </button>
                 </div>
@@ -258,23 +368,24 @@ export default function PostDetailPage() {
             </div>
           </section>
 
-          <aside className="overflow-hidden rounded-xl border border-border bg-card-bg shadow-sm">
+          <aside className="overflow-hidden glass-panel rounded-[28px] border border-border bg-card-bg">
             <div className="border-b border-border p-4">
               <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-foreground/60">Comments</h2>
             </div>
 
             <div className="max-h-[52vh] overflow-y-auto p-4">
+              {hasOlderComments && <button disabled={loadingComments} onClick={loadOlderComments} className="mb-4 underline">{loadingComments ? "Cargando..." : "Cargar comentarios anteriores"}</button>}
               {comments.length ? (
                 <div className="flex flex-col gap-4">
                   {comments.map((item) => (
                     <div key={item.id} className="flex gap-3">
                       <div className="relative h-10 w-10 overflow-hidden rounded-full">
-                        <Image src={item.user?.avatar || defaultAvatar} alt={item.user?.username || "user"} fill className="object-cover" />
+                        <Image src={item.user?.avatar || defaultAvatar} alt={item.user?.username || "user"} sizes="64px" fill className="object-cover" />
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
-                          <span className="text-sm font-semibold text-foreground">{item.user?.username || "default_user"}</span>
-                          <span className="text-xs text-foreground/40">{getTimeAgo(new Date(item.created_at))}</span>
+                          <Link href={`/profile/${item.user_id}`} className="text-sm font-semibold text-foreground">{item.user?.username || "default_user"}</Link>
+                          <span className="text-xs text-foreground/60">{getTimeAgo(new Date(item.created_at))}</span>
                         </div>
                         <p className="text-sm text-foreground/80">{item.content}</p>
                       </div>
@@ -292,13 +403,16 @@ export default function PostDetailPage() {
                 onChange={(event) => setComment(event.target.value)}
                 rows={3}
                 placeholder="Escribe un comentario..."
+                aria-label="Comentario"
+                maxLength={2000}
                 className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none focus:border-primary"
               />
               <button
                 onClick={addComment}
+                disabled={interacting || !comment.trim()}
                 className="mt-3 rounded-lg bg-gradient-to-r from-primary to-accent px-4 py-2 text-sm font-semibold text-white"
               >
-                Publicar comentario
+                {interacting ? "Procesando..." : "Publicar comentario"}
               </button>
             </div>
           </aside>

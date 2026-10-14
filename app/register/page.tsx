@@ -1,12 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import AuthShell from "../auth/components/AuthShell";
 import { supabase } from "../utils/client";
+import { getErrorMessage } from "../utils/errors";
 
 export default function RegisterPage() {
-  const router = useRouter();
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -21,10 +20,12 @@ export default function RegisterPage() {
     setIsLoading(true);
     setMessage(null);
 
-    const { error } = await supabase.auth.signUp({
+    try {
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
+        emailRedirectTo: `${window.location.origin}/account`,
         data: {
           username,
         },
@@ -40,9 +41,11 @@ export default function RegisterPage() {
 
     setMessage({
       type: "success",
-      text: "Cuenta creada. Revisa tu correo si Supabase pide confirmacion.",
+      text: data.session ? "Cuenta creada. Ya puedes entrar a tu perfil." : "Revisa tu correo para confirmar la cuenta. Si no llega, puedes solicitar otro enlace en Gestionar cuenta.",
     });
-    router.push("/login");
+    } catch(error) {
+      setMessage({ type: "error", text: getErrorMessage(error,"No se pudo registrar la cuenta. Inténtalo de nuevo.") });
+    } finally { setIsLoading(false); }
   };
 
   return (

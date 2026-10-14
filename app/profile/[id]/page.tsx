@@ -9,7 +9,7 @@ export default function PublicProfilePage() {
 
   return (
     <RequireAuth>
-      <div className="min-h-screen bg-background px-4 py-6 pb-28">
+      <div className="min-h-screen px-4 py-6 pb-28">
         <div className="mx-auto max-w-2xl">
           <ProfileScreen profileId={params.id} />
         </div>

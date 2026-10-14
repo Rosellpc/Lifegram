@@ -21,9 +21,9 @@ export default function AuthShell({
   footerLabel,
 }: AuthShellProps) {
   return (
-    <main className="min-h-screen bg-background px-4 py-8">
+    <main className="min-h-screen px-4 py-8">
       <div className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-5xl items-center justify-center">
-        <div className="grid w-full overflow-hidden rounded-xl border border-border bg-card-bg shadow-sm md:grid-cols-[1fr_420px]">
+        <div className="grid w-full overflow-hidden glass-panel rounded-[28px] border border-border bg-card-bg md:grid-cols-[1fr_420px]">
           <section className="hidden bg-primary p-10 text-white md:flex md:flex-col md:justify-between">
             <div>
               <p className="text-sm font-semibold uppercase tracking-[0.2em] text-white/70">

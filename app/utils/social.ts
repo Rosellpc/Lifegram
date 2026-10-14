@@ -209,11 +209,29 @@ export async function fetchPostCounts(
   client: SupabaseClient,
   postIds: string[]
 ) {
-  const [likesMap, commentsMap] = await Promise.all([
-    fetchCountsByForeignKey(client, "post_likes", "post_id", postIds),
-    fetchCountsByForeignKey(client, "comments", "post_id", postIds),
-  ]);
-
+  const likesMap = new Map<string, number>();
+  const commentsMap = new Map<string, number>();
+  if (!postIds.length) return { likesMap, commentsMap };
+  const { data, error } = await client.rpc("post_counts", { post_ids: postIds });
+  if (!error) {
+    for (const row of data ?? []) {
+      likesMap.set(row.post_id, Number(row.likes));
+      commentsMap.set(row.post_id, Number(row.comments));
+    }
+    return { likesMap, commentsMap };
+  }
+  if (error.code !== "PGRST202") throw error;
+  // Compatibility until the aggregate migration is applied: counts only, no rows.
+  await Promise.all(postIds.map(async (id) => {
+    const [likes, comments] = await Promise.all([
+      client.from("post_likes").select("post_id", { count: "exact", head: true }).eq("post_id", id),
+      client.from("comments").select("post_id", { count: "exact", head: true }).eq("post_id", id),
+    ]);
+    if (likes.error) throw likes.error;
+    if (comments.error) throw comments.error;
+    likesMap.set(id, likes.count ?? 0);
+    commentsMap.set(id, comments.count ?? 0);
+  }));
   return { likesMap, commentsMap };
 }
 
@@ -222,12 +240,16 @@ export async function fetchScopedIdSet(
   table: "post_likes" | "saved_posts" | "follows",
   selectColumn: "post_id" | "user_id" | "following_id" | "follower_id",
   scopeColumn: "user_id" | "follower_id" | "following_id",
-  scopeValue: string
+  scopeValue: string,
+  values?: string[]
 ) {
-  const { data, error } = await client
+  if (values && !values.length) return new Set<string>();
+  let query = client
     .from(table)
     .select(selectColumn)
     .eq(scopeColumn, scopeValue);
+  if (values) query = query.in(selectColumn, values);
+  const { data, error } = await query;
   if (error) {
     throw error;
   }
@@ -258,12 +280,15 @@ export async function fetchFollowingIds(
 
 export async function fetchSavedPostIds(
   client: SupabaseClient,
-  userId: string
+  userId: string,
+  offset = 0
 ) {
   const { data, error } = await client
     .from("saved_posts")
     .select("post_id")
-    .eq("user_id", userId);
+    .eq("user_id", userId)
+    .order("post_id", { ascending: false })
+    .range(offset, offset + 19);
 
   if (error) {
     throw error;
@@ -274,12 +299,16 @@ export async function fetchSavedPostIds(
 
 export async function fetchLikedPostIds(
   client: SupabaseClient,
-  userId: string
+  userId: string,
+  postIds?: string[]
 ) {
-  const { data, error } = await client
+  if (postIds && !postIds.length) return new Set<string>();
+  let query = client
     .from("post_likes")
     .select("post_id")
     .eq("user_id", userId);
+  if (postIds) query = query.in("post_id", postIds);
+  const { data, error } = await query;
 
   if (error) {
     throw error;
@@ -309,11 +338,10 @@ export async function fetchPostsByIds(
 
   const mapped = (data ?? []) as PostRow[];
   const postIds = mapped.map((post) => post.id);
-  const [likesMap, commentsCount, likedSet, savedSet] = await Promise.all([
-    fetchCountsByForeignKey(client, "post_likes", "post_id", postIds),
-    fetchCountsByForeignKey(client, "comments", "post_id", postIds),
-    viewerId ? fetchLikedPostIds(client, viewerId) : Promise.resolve(new Set<string>()),
-    viewerId ? fetchSavedPostIds(client, viewerId) : Promise.resolve(new Set<string>()),
+  const [{ likesMap, commentsMap: commentsCount }, likedSet, savedSet] = await Promise.all([
+    fetchPostCounts(client, postIds),
+    viewerId ? fetchLikedPostIds(client, viewerId, postIds) : Promise.resolve(new Set<string>()),
+    viewerId ? fetchScopedIdSet(client,"saved_posts","post_id","user_id",viewerId,postIds) : Promise.resolve(new Set<string>()),
   ]);
 
   return mapped.map((post) => {
@@ -332,12 +360,20 @@ export async function fetchPostsBundle(
   opts?: {
     userIds?: string[];
     viewerId?: string;
+    before?: { created_at: string; id: string };
+    limit?: number;
   }
 ) {
   let postQuery = client
     .from("posts")
     .select("id, user_id, image_url, caption, location, created_at, updated_at, profiles!posts_user_id_fkey (id, username, avatar_url, full_name, bio, website)")
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(Math.min(opts?.limit ?? 20, 50));
+
+  if (opts?.before) {
+    postQuery = postQuery.or(`created_at.lt.${opts.before.created_at},and(created_at.eq.${opts.before.created_at},id.lt.${opts.before.id})`);
+  }
 
   if (opts?.userIds?.length) {
     postQuery = postQuery.in("user_id", opts.userIds);
@@ -351,25 +387,26 @@ export async function fetchPostsBundle(
   const typedPosts = (posts ?? []) as PostRow[];
   const postIds = typedPosts.map((post) => post.id);
 
-  const [likesMap, savedSet, commentsCount, likedSet] = await Promise.all([
-    fetchCountsByForeignKey(client, "post_likes", "post_id", postIds),
+  const [{ likesMap, commentsMap: commentsCount }, savedSet, likedSet] = await Promise.all([
+    fetchPostCounts(client, postIds),
     opts?.viewerId
       ? fetchScopedIdSet(
           client,
           "saved_posts",
           "post_id",
           "user_id",
-          opts.viewerId
+          opts.viewerId,
+          postIds
         )
       : Promise.resolve(new Set<string>()),
-    fetchCountsByForeignKey(client, "comments", "post_id", postIds),
     opts?.viewerId
       ? fetchScopedIdSet(
           client,
           "post_likes",
           "post_id",
           "user_id",
-          opts.viewerId
+          opts.viewerId,
+          postIds
         )
       : Promise.resolve(new Set<string>()),
   ]);
@@ -385,21 +422,36 @@ export async function fetchPostsBundle(
   });
 }
 
+export async function fetchRankedPosts(client: SupabaseClient, viewerId: string, limit = 20) {
+  const { data, error } = await client.rpc("ranked_post_ids", { page_size: limit });
+  if (error) throw error;
+  return fetchPostsByIds(client, (data ?? []).map((row: { post_id: string }) => row.post_id), viewerId)
+    .then(posts => {
+      const positions = new Map<string, number>((data ?? []).map((row: {post_id: string}, index: number) => [row.post_id,index]));
+      return posts.sort((a,b) => (positions.get(a.id) ?? 0) - (positions.get(b.id) ?? 0));
+    });
+}
+
 export async function fetchCommentsForPost(
   client: SupabaseClient,
-  postId: string
+  postId: string,
+  before?: {created_at: string; id: string}
 ) {
-  const { data, error } = await client
+  let query = client
     .from("comments")
     .select("id, post_id, user_id, content, created_at, profiles!comments_user_id_fkey (id, username, avatar_url, full_name)")
     .eq("post_id", postId)
-    .order("created_at", { ascending: true });
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(30);
+  if (before) query = query.or(`created_at.lt.${before.created_at},and(created_at.eq.${before.created_at},id.lt.${before.id})`);
+  const { data, error } = await query;
 
   if (error) {
     throw error;
   }
 
-  return (data ?? []) as CommentRow[];
+  return ((data ?? []) as CommentRow[]).reverse();
 }
 
 export async function fetchStoriesBundle(
@@ -427,13 +479,17 @@ export async function fetchStoriesBundle(
 
 export async function fetchNotifications(
   client: SupabaseClient,
-  recipientId: string
+  recipientId: string,
+  options?: { unreadOnly?: boolean; before?: { created_at: string; id: string } }
 ) {
-  const { data, error } = await client
+  let query = client
     .from("notifications")
     .select("id, recipient_id, actor_id, type, post_id, comment_id, is_read, created_at, actor:profiles!notifications_actor_id_fkey (id, username, avatar_url, full_name)")
     .eq("recipient_id", recipientId)
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false }).order("id", { ascending: false }).limit(30);
+  if (options?.unreadOnly) query = query.eq("is_read", false);
+  if (options?.before) query = query.or(`created_at.lt.${options.before.created_at},and(created_at.eq.${options.before.created_at},id.lt.${options.before.id})`);
+  const { data, error } = await query;
 
   if (error) {
     throw error;

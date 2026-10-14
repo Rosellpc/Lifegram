@@ -2,9 +2,11 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import RequireAuth from "./components/RequireAuth";
-import { supabase } from "./utils/client";
+import NavAvatar from "./components/NavAvatar";
+import { supabase, getCurrentUser } from "./utils/client";
+import { getErrorMessage } from "./utils/errors";
 import { defaultAvatar, defaultPostImage } from "./utils/assets";
 import {
   fetchFollowingIds,
@@ -57,7 +59,7 @@ function StoryAvatar({ story }: { story: StoryRow }) {
           <Image
             src={profile?.avatar_url || defaultAvatar}
             alt={profile?.username || "story"}
-            fill
+            sizes="64px" fill
             className="object-cover"
           />
         </div>
@@ -73,38 +75,42 @@ function PostCard({
   post,
   onLike,
   onSave,
+  disabled,
+  eager,
 }: {
   post: Post;
   onLike: (post: Post) => void;
   onSave: (post: Post) => void;
+  disabled: boolean;
+  eager: boolean;
 }) {
   return (
-    <article className="overflow-hidden rounded-xl border border-border bg-card-bg shadow-sm">
+    <article className="overflow-hidden glass-panel rounded-[28px] border border-border bg-card-bg">
       <div className="flex items-center gap-3 p-4">
-        <div className="relative h-10 w-10 overflow-hidden rounded-full ring-2 ring-primary">
-          <Image src={post.user?.avatar || defaultAvatar} alt={post.user?.username || "profile"} fill className="object-cover" />
-        </div>
+        <Link href={`/profile/${post.user_id}`} aria-label={`Ver perfil de ${post.user?.username || "usuario"}`} className="relative h-10 w-10 overflow-hidden rounded-full ring-2 ring-primary">
+          <Image src={post.user?.avatar || defaultAvatar} alt={post.user?.username || "profile"} sizes="64px" fill className="object-cover" />
+        </Link>
         <div className="min-w-0 flex-1">
-          <div className="truncate font-semibold text-foreground">{post.user?.username || "default_user"}</div>
-          <div className="text-xs text-foreground/50">{getTimeAgo(new Date(post.created_at))}</div>
+          <Link href={`/profile/${post.user_id}`} className="block truncate font-semibold text-foreground">{post.user?.username || "default_user"}</Link>
+          <div className="text-xs text-foreground/65">{getTimeAgo(new Date(post.created_at))}</div>
         </div>
       </div>
 
       <Link href={`/posts/${post.id}`} className="relative block aspect-square w-full">
-        <Image src={post.image_url || defaultPostImage} alt={post.caption} fill className="object-cover" />
+        <Image src={post.image_url || defaultPostImage} alt={post.caption} sizes="(max-width: 768px) 100vw, 640px" loading={eager ? "eager" : "lazy"} fill className="object-cover" />
       </Link>
 
       <div className="p-4">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <button onClick={() => onLike(post)} aria-label={post.isLiked ? "Quitar like" : "Dar like"}>
+            <button disabled={disabled} onClick={() => onLike(post)} aria-label={post.isLiked ? "Quitar like" : "Dar like"}>
               <HeartIcon filled={post.isLiked || false} />
             </button>
             <Link href={`/posts/${post.id}`} className="text-foreground/80 hover:text-foreground">
               <CommentIcon />
             </Link>
           </div>
-          <button onClick={() => onSave(post)} aria-label={post.isSaved ? "Quitar guardado" : "Guardar"}>
+          <button disabled={disabled} onClick={() => onSave(post)} aria-label={post.isSaved ? "Quitar guardado" : "Guardar"}>
             <BookmarkIcon filled={post.isSaved || false} />
           </button>
         </div>
@@ -112,7 +118,7 @@ function PostCard({
         <div className="mt-3 flex items-center gap-2 text-sm text-foreground">
           <span className="font-semibold">{post.likes.toLocaleString()}</span>
           <span>{post.likes === 1 ? "like" : "likes"}</span>
-          <span className="text-foreground/40">·</span>
+          <span className="text-foreground/60">·</span>
           <Link href={`/posts/${post.id}`} className="text-foreground/60 hover:text-foreground">
             {post.commentsCount || 0} comentarios
           </Link>
@@ -131,6 +137,13 @@ export default function Home() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [stories, setStories] = useState<StoryRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [retry, setRetry] = useState(0);
+  const mutationLock = useRef(false);
+  const [interacting, setInteracting] = useState(false);
+  const [cursor, setCursor] = useState<{ created_at: string; id: string } | undefined>();
 
   useEffect(() => {
     let active = true;
@@ -139,7 +152,7 @@ export default function Home() {
       setLoading(true);
       const {
         data: { user },
-      } = await supabase.auth.getUser();
+      } = await getCurrentUser();
 
       if (!user) {
         return;
@@ -149,7 +162,7 @@ export default function Home() {
       const feedUserIds = followingIds.length ? [user.id, ...followingIds] : undefined;
 
       const [feedPosts, feedStories] = await Promise.all([
-        fetchPostsBundle(supabase, { viewerId: user.id, userIds: feedUserIds }),
+        fetchPostsBundle(supabase, { viewerId: user.id, userIds: feedUserIds, before: cursor }),
         fetchStoriesBundle(supabase, feedUserIds ? { userIds: feedUserIds } : undefined),
       ]);
 
@@ -157,13 +170,14 @@ export default function Home() {
         return;
       }
 
-      setPosts(feedPosts);
+      setPosts((previous) => page === 0 ? feedPosts : [...previous, ...feedPosts.filter(post => !previous.some(item => item.id === post.id))]);
+      setHasMore(feedPosts.length === 20);
       setStories(feedStories);
       setLoading(false);
     };
 
     load().catch((error) => {
-      console.error("Error al cargar el feed:", error);
+      setActionError(`No se pudo cargar el feed: ${getErrorMessage(error, "Inténtalo de nuevo")}`);
       if (active) {
         setLoading(false);
       }
@@ -172,10 +186,14 @@ export default function Home() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [page, cursor, retry]);
 
   const handleLike = async (targetPost: Post) => {
+    if (mutationLock.current) return;
+    mutationLock.current = true; setInteracting(true);
+    setActionError(null);
     const previous = posts;
+    try {
     const optimistic = posts.map((post) =>
       post.id === targetPost.id
         ? {
@@ -190,7 +208,7 @@ export default function Home() {
 
     const {
       data: { user },
-    } = await supabase.auth.getUser();
+    } = await getCurrentUser();
 
     if (!user) {
       setPosts(previous);
@@ -211,7 +229,7 @@ export default function Home() {
           .eq("user_id", user.id);
 
     if (error) {
-      console.error("Error al actualizar likes:", error);
+      setActionError(`No se pudo actualizar el like: ${getErrorMessage(error, "Error desconocido")}`);
       setPosts(previous);
       return;
     }
@@ -224,10 +242,18 @@ export default function Home() {
         post_id: targetPost.id,
       });
     }
+    } catch(error) {
+      setPosts(previous);
+      setActionError(getErrorMessage(error,"No se pudo actualizar el like. Inténtalo de nuevo."));
+    } finally { mutationLock.current=false; setInteracting(false); }
   };
 
   const handleSave = async (targetPost: Post) => {
+    if (mutationLock.current) return;
+    mutationLock.current = true; setInteracting(true);
+    setActionError(null);
     const previous = posts;
+    try {
     const optimistic = posts.map((post) =>
       post.id === targetPost.id
         ? { ...post, isSaved: !post.isSaved }
@@ -238,7 +264,7 @@ export default function Home() {
 
     const {
       data: { user },
-    } = await supabase.auth.getUser();
+    } = await getCurrentUser();
 
     if (!user) {
       setPosts(previous);
@@ -257,55 +283,75 @@ export default function Home() {
         });
 
     if (error) {
-      console.error("Error al guardar post:", error);
+      setActionError(`No se pudo guardar la publicación: ${getErrorMessage(error, "Error desconocido")}`);
       setPosts(previous);
     }
+    } catch(error) {
+      setPosts(previous);
+      setActionError(getErrorMessage(error,"No se pudo guardar. Inténtalo de nuevo."));
+    } finally { mutationLock.current=false; setInteracting(false); }
   };
 
   return (
     <RequireAuth>
-      <div className="min-h-screen bg-background">
-        <header className="sticky top-0 z-40 border-b border-border bg-card-bg/95 backdrop-blur">
+      <div className="min-h-screen">
+        <header className="glass-header sticky top-0 z-40 border-b">
           <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-3">
             <div>
               <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-                Suplatzigram
+                Lifegram
               </h1>
-              <p className="text-xs text-foreground/60">Tu feed, tus personas, tus momentos.</p>
             </div>
-            <Link href="/profile" className="relative h-10 w-10 overflow-hidden rounded-full ring-2 ring-primary">
-              <Image src={defaultAvatar} alt="Perfil" fill className="object-cover" />
+            <Link href="/profile" aria-label="Mi perfil" className="flex h-10 w-10 items-center justify-center rounded-full ring-2 ring-primary">
+              <NavAvatar size={32} />
             </Link>
           </div>
         </header>
 
         <main className="mx-auto max-w-2xl px-4 py-5 pb-28">
+          {actionError && (
+            <div role="alert" className="mb-5 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-500">
+              {actionError}
+              <button type="button" onClick={() => { setActionError(null); setRetry(value => value + 1); }} className="ml-3 underline">Reintentar</button>
+            </div>
+          )}
           <section className="mb-5">
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-foreground/60">Stories</h2>
+              <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-foreground/60">Historias</h2>
               <Link href="/stories" className="text-xs font-semibold text-primary">
                 Ver todas
               </Link>
             </div>
             <div className="flex gap-3 overflow-x-auto pb-2">
+              <Link href="/stories#create-story" className="flex w-20 shrink-0 flex-col items-center gap-2" aria-label="Crear historia">
+                <span className="flex h-16 w-16 items-center justify-center rounded-full border-2 border-dashed border-primary/40 bg-card-bg text-3xl font-light text-primary">+</span>
+                <span className="text-center text-[11px] font-medium">Tu historia</span>
+              </Link>
               {stories.length ? (
                 stories.map((story) => <StoryAvatar key={story.id} story={story} />)
               ) : (
-                <div className="rounded-xl border border-dashed border-border px-4 py-6 text-sm text-foreground/50">
+                <div className="rounded-xl border border-dashed border-border px-4 py-6 text-sm text-foreground/65">
                   No hay historias activas.
                 </div>
               )}
             </div>
           </section>
+          {hasMore && posts.length > 0 && !loading && (
+            <button type="button" className="mt-5 w-full rounded-lg border border-border p-3" onClick={() => {
+              const last = posts[posts.length - 1];
+              setCursor({ created_at: typeof last.created_at === "string" ? last.created_at : last.created_at.toISOString(), id: last.id });
+              setPage(value => value + 1);
+            }}>Cargar más publicaciones</button>
+          )}
 
           <section className="flex flex-col gap-6">
             {loading ? (
-              <div className="rounded-xl border border-border bg-card-bg p-6 text-sm text-foreground/60">
+              <div className="glass-panel rounded-[24px] border border-border bg-card-bg p-6 text-sm text-foreground/60">
                 Cargando publicaciones...
               </div>
             ) : posts.length ? (
-              posts.map((post) => (
-                <PostCard key={post.id} post={post} onLike={handleLike} onSave={handleSave} />
+              posts.map((post, index) => (
+                <PostCard key={post.id} post={post} onLike={handleLike} onSave={handleSave} disabled={interacting} eager={index === 0} />
               ))
             ) : (
               <div className="rounded-xl border border-dashed border-border bg-card-bg p-8 text-center text-sm text-foreground/60">

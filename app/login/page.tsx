@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AuthShell from "../auth/components/AuthShell";
 import { supabase } from "../utils/client";
+import { getErrorMessage } from "../utils/errors";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -20,6 +22,7 @@ export default function LoginPage() {
     setIsLoading(true);
     setMessage(null);
 
+    try {
     const { error } = await supabase.auth.signInWithPassword({
       email,
       password,
@@ -35,6 +38,9 @@ export default function LoginPage() {
     setMessage({ type: "success", text: "Sesion iniciada correctamente." });
     router.push("/");
     router.refresh();
+    } catch (error) {
+      setMessage({ type: "error", text: getErrorMessage(error,"No se pudo iniciar sesión. Inténtalo de nuevo.") });
+    } finally { setIsLoading(false); }
   };
 
   return (
@@ -46,6 +52,7 @@ export default function LoginPage() {
       footerLabel="Registrate"
     >
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <Link href="/account" className="text-sm text-primary underline">¿Olvidaste tu contraseña o necesitas confirmar tu correo?</Link>
         <label className="flex flex-col gap-2 text-sm font-medium text-foreground">
           Email
           <input

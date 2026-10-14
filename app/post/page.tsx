@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import RequireAuth from "../components/RequireAuth";
-import { supabase } from "../utils/client";
+import { supabase, getCurrentUser } from "../utils/client";
 import { getErrorMessage } from "../utils/errors";
 
 export default function CreatePage() {
@@ -22,7 +22,7 @@ export default function CreatePage() {
   const getCurrentUserId = async () => {
     const {
       data: { user },
-    } = await supabase.auth.getUser();
+    } = await getCurrentUser();
 
     if (user) {
       return user.id;
@@ -41,6 +41,9 @@ export default function CreatePage() {
     if (!file.type.startsWith("image/")) {
       setMessage({ type: "error", text: "Selecciona un archivo de imagen" });
       return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setMessage({type:"error",text:"La imagen debe pesar como máximo 10 MB."}); return;
     }
 
     setImageFile(file);
@@ -99,6 +102,8 @@ export default function CreatePage() {
       .select("*");
 
     if (postError) {
+      const { error: cleanupError } = await supabase.storage.from("images").remove([filePath]);
+      if (cleanupError) throw new Error(`No se pudo guardar la publicación: ${getErrorMessage(postError,"Error de base de datos")}. La imagen subida no pudo eliminarse; revisa los permisos de Storage.`);
       throw new Error(`No se pudo guardar la publicación: ${getErrorMessage(postError, "Error de base de datos")}`);
     }
 
@@ -142,8 +147,8 @@ export default function CreatePage() {
 
   return (
     <RequireAuth>
-      <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-40 bg-card-bg border-b border-border">
+      <div className="min-h-screen">
+      <header className="glass-header sticky top-0 z-40 border-b">
         <div className="max-w-lg mx-auto px-4 py-3 flex items-center justify-center">
           <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
             Crear Post
@@ -159,7 +164,7 @@ export default function CreatePage() {
                 <Image
                   src={imagePreview}
                   alt="Preview"
-                  fill
+                  sizes="(max-width: 768px) 100vw, 640px" fill
                   className="object-cover"
                 />
                 <button
@@ -233,7 +238,7 @@ export default function CreatePage() {
               onChange={(e) => setCaption(e.target.value)}
               placeholder="Escribe algo sobre tu foto..."
               rows={3}
-              className="w-full px-4 py-3 rounded-xl bg-card-bg border border-border text-foreground placeholder:text-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none"
+              className="w-full px-4 py-3 rounded-xl bg-card-bg border border-border text-foreground placeholder:text-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none"
             />
           </div>
 

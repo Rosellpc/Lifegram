@@ -2,6 +2,7 @@
   "name": "suplatzigram",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@11.20.0",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -9,22 +10,27 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit --incremental false",
     "test": "node --test scripts/regression.test.cjs",
+    "test:e2e": "playwright test",
     "check:supabase": "node scripts/check-supabase.cjs",
-    "check:supabase:auth": "node scripts/check-supabase-auth.cjs"
+    "check:supabase:auth": "node scripts/check-supabase-auth.cjs",
+    "check:supabase:security": "node scripts/check-supabase-security.cjs",
+    "check:messages": "node scripts/check-messages.cjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.107.0",
-    "next": "16.0.6",
-    "react": "19.2.0",
-    "react-dom": "19.2.0"
+    "next": "16.4.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "baseline-browser-mapping": "^2.11.28",
     "eslint": "^9",
-    "eslint-config-next": "16.0.6",
+    "eslint-config-next": "16.4.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

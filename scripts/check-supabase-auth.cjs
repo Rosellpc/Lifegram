@@ -53,6 +53,9 @@ async function main() {
     const post = checked(await client.from('posts').select('id,caption,profiles!posts_user_id_fkey(id,username)').eq('id', fixtureId).single(), 'Leer publicación');
     if (post.caption !== caption) throw new Error('La publicación leída no coincide');
     console.log('Publicación y relación con autor: OK');
+    const edited = checked(await client.from('posts').update({caption:`${caption} editada`}).eq('id',fixtureId).eq('user_id',userId).select('caption').single(),'Editar publicación');
+    if (edited.caption !== `${caption} editada`) throw new Error('La edición no persistió');
+    console.log('Edición de publicación propia: OK');
 
     for (const table of ['post_likes', 'saved_posts']) {
       checked(await client.from(table).insert({ post_id: fixtureId, user_id: userId }), table);
@@ -92,7 +95,10 @@ async function main() {
       try { await cleanup(); }
       catch (error) { console.error(error.message); process.exitCode = 1; }
     }
-    await Promise.all([client.auth.signOut({ scope: 'local' }), second.auth.signOut({ scope: 'local' })]);
+    const exits = await Promise.all([client.auth.signOut({ scope: 'local' }), second.auth.signOut({ scope: 'local' })]);
+    exits.forEach(result => { if (result.error) { console.error('Cerrar sesión: FAIL'); process.exitCode=1; } });
+    if ((await client.auth.getSession()).data.session) { console.error('La sesión sigue activa'); process.exitCode=1; }
+    else console.log('Cerrar sesión: OK');
     console.log(`Limpieza finalizada. Identificador de prueba: ${fixtureId}`);
   }
 }
