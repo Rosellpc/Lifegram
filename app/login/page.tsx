@@ -45,16 +45,15 @@ export default function LoginPage() {
 
   return (
     <AuthShell
-      title="Inicia sesion"
-      subtitle="Vuelve a tu feed, tus fotos y tus personas favoritas."
-      footerText="No tienes cuenta?"
+      title="Qué bueno verte."
+      subtitle="Inicia sesión para seguir compartiendo tus momentos."
+      footerText="¿Aún no tienes cuenta?"
       footerHref="/register"
-      footerLabel="Registrate"
+      footerLabel="Crear cuenta"
     >
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-        <Link href="/account" className="text-sm text-primary underline">¿Olvidaste tu contraseña o necesitas confirmar tu correo?</Link>
         <label className="flex flex-col gap-2 text-sm font-medium text-foreground">
-          Email
+          Correo electrónico
           <input
             type="email"
             value={email}
@@ -67,20 +66,22 @@ export default function LoginPage() {
         </label>
 
         <label className="flex flex-col gap-2 text-sm font-medium text-foreground">
-          Contrasena
+          Contraseña
           <input
             type="password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             required
             autoComplete="current-password"
-            placeholder="Tu contrasena"
+            placeholder="Tu contraseña"
             className="rounded-lg border border-border bg-background px-4 py-3 text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
           />
         </label>
 
+        <Link href="/account" className="self-end text-xs text-foreground/65 underline underline-offset-4 hover:text-foreground">¿Olvidaste tu contraseña?</Link>
+
         {message && (
-          <div
+          <div role={message.type === "error" ? "alert" : "status"}
             className={`rounded-lg border px-4 py-3 text-sm ${
               message.type === "success"
                 ? "border-green-500/20 bg-green-500/10 text-green-600"
@@ -94,7 +95,7 @@ export default function LoginPage() {
         <button
           type="submit"
           disabled={isLoading}
-          className="mt-2 rounded-lg bg-gradient-to-r from-primary to-accent px-4 py-3 font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+          className="auth-submit mt-2 flex min-h-12 items-center justify-center rounded-2xl px-4 py-3 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
         >
           {isLoading ? "Ingresando..." : "Ingresar"}
         </button>

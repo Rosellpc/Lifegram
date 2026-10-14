@@ -135,3 +135,28 @@ button:disabled { cursor: not-allowed; opacity: 0.6; }
 @media (max-width: 639px) {
   .story-frame { height: 100dvh; width: 100vw; aspect-ratio: auto; }
 }
+
+/* Authentication: soft light, translucent surfaces and sculptural glass. */
+.auth-scene { background: #eeefec; }
+.auth-orb { position: absolute; z-index: -1; pointer-events: none; border-radius: 50%; filter: blur(12px); }
+.auth-orb-one { width: 580px; height: 580px; top: -250px; left: -170px; background: radial-gradient(circle, #d0ded8, transparent 70%); }
+.auth-orb-two { width: 700px; height: 700px; bottom: -380px; right: -200px; background: radial-gradient(circle, #d4dbdf, transparent 70%); }
+.auth-surface {
+  background: rgba(255,255,255,.63);
+  border: 1px solid rgba(255,255,255,.95);
+  box-shadow: 0 32px 90px -40px rgba(34,49,45,.22), inset 0 1px 0 white;
+}
+.auth-sculpture { position: relative; height: 210px; }
+.auth-sculpture span {
+  position: absolute; width: 190px; height: 190px; left: 50%; top: 50%;
+  border-radius: 50%; border: 1px solid rgba(255,255,255,.95);
+  background: linear-gradient(135deg, rgba(255,255,255,.8), rgba(196,215,207,.13) 50%, rgba(255,255,255,.6));
+  box-shadow: inset 6px 6px 18px rgba(255,255,255,.85), inset -6px -6px 18px rgba(93,126,112,.09), 12px 16px 28px -16px rgba(64,85,76,.25);
+  transform: translate(-70%,-50%) rotate(-25deg) scaleX(.76);
+}
+.auth-sculpture span:nth-child(2) { transform: translate(-42%,-50%) rotate(25deg) scaleX(.76); }
+.auth-sculpture span:nth-child(3) { width: 100px; height: 100px; transform: translate(-50%,-50%); background: rgba(255,255,255,.22); }
+.auth-submit { background: var(--foreground); color: var(--background); box-shadow: 0 6px 14px -8px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.18); }
+.auth-submit:hover:not(:disabled) { background: color-mix(in srgb, var(--foreground) 85%, white); }
+@supports (backdrop-filter: blur(1px)) { .auth-surface { backdrop-filter: blur(28px) saturate(125%); } }
+@media (prefers-reduced-transparency: reduce) { .auth-surface { background: var(--background); backdrop-filter: none; } }

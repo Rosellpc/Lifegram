@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import type { ReactNode } from "react";
@@ -13,60 +13,37 @@ type AuthShellProps = {
   footerLabel: string;
 };
 
-export default function AuthShell({
-  title,
-  subtitle,
-  children,
-  footerText,
-  footerHref,
-  footerLabel,
-}: AuthShellProps) {
-  return (
-    <main className="min-h-screen px-4 py-8">
-      <div className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-5xl items-center justify-center">
-        <div className="grid w-full overflow-hidden glass-panel rounded-[28px] border border-border bg-card-bg md:grid-cols-[1fr_420px]">
-          <section className="hidden bg-primary p-10 text-white md:flex md:flex-col md:justify-between">
-            <div>
-              <BrandLogo className="h-8 w-auto max-w-full text-foreground" />
-              <h1 className="mt-5 max-w-sm text-4xl font-bold leading-tight">
-                Comparte momentos, encuentra personas, crea comunidad.
-              </h1>
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              <div className="aspect-square rounded-lg bg-white/15" />
-              <div className="aspect-square rounded-lg bg-accent/70" />
-              <div className="aspect-square rounded-lg bg-white/25" />
-              <div className="aspect-square rounded-lg bg-accent/40" />
-              <div className="aspect-square rounded-lg bg-white/20" />
-              <div className="aspect-square rounded-lg bg-accent/80" />
-            </div>
-          </section>
-
-          <section className="px-6 py-8 sm:px-10">
-            <div className="mb-8 text-center">
-              <Link
-                href="/"
-                className="inline-block text-foreground"
-              >
-                <BrandLogo className="h-9 w-auto max-w-full" />
-              </Link>
-              <h2 className="mt-8 text-2xl font-bold text-foreground">
-                {title}
-              </h2>
-              <p className="mt-2 text-sm text-foreground/60">{subtitle}</p>
-            </div>
-
-            {children}
-
-            <p className="mt-8 text-center text-sm text-foreground/60">
-              {footerText}{" "}
-              <Link href={footerHref} className="font-semibold text-primary">
-                {footerLabel}
-              </Link>
-            </p>
-          </section>
-        </div>
+export default function AuthShell({ title, subtitle, children, footerText, footerHref, footerLabel }: AuthShellProps) {
+  return <main className="auth-scene relative isolate flex min-h-[100svh] items-center justify-center overflow-hidden px-5 py-10 sm:px-8">
+    <div className="auth-orb auth-orb-one" aria-hidden="true" />
+    <div className="auth-orb auth-orb-two" aria-hidden="true" />
+    <div className="relative mx-auto w-full max-w-5xl">
+      <div className="auth-surface grid overflow-hidden rounded-[32px] md:grid-cols-[1.05fr_1fr]">
+        <section className="relative hidden flex-col justify-between overflow-hidden border-r border-white/60 p-10 md:flex lg:p-14">
+          <Link href="/" className="relative z-10 self-start text-foreground"><BrandLogo className="h-7 w-auto" /></Link>
+          <div className="auth-sculpture my-12" aria-hidden="true">
+            <span /><span /><span />
+          </div>
+          <div className="relative z-10">
+            <p className="mb-4 text-[10px] font-semibold uppercase tracking-[.28em] text-foreground/55">Momentos que conectan</p>
+            <p className="max-w-xs text-4xl font-light leading-[1.15] tracking-[-.045em] lg:text-5xl">La vida se disfruta<br /><span className="text-foreground/55">compartida.</span></p>
+            <p className="mt-5 max-w-xs text-sm leading-relaxed text-foreground/60">Un espacio para tus historias y las personas que las hacen especiales.</p>
+          </div>
+        </section>
+        <section className="px-6 py-10 sm:px-10 md:py-14 lg:px-14">
+          <Link href="/" className="mb-10 inline-block text-foreground md:hidden"><BrandLogo className="h-7 w-auto" /></Link>
+          <div className="mb-8">
+            <p className="mb-3 text-[10px] font-semibold uppercase tracking-[.24em] text-foreground/50">Tu espacio, tus personas</p>
+            <h1 className="text-3xl font-medium text-foreground">{title}</h1>
+            <p className="mt-3 max-w-sm text-sm leading-relaxed text-foreground/60">{subtitle}</p>
+          </div>
+          {children}
+          <p className="mt-8 border-t border-foreground/10 pt-6 text-center text-sm text-foreground/60">
+            {footerText}{" "}<Link href={footerHref} className="font-semibold text-foreground underline decoration-foreground/25 underline-offset-4 hover:decoration-foreground">{footerLabel}</Link>
+          </p>
+        </section>
       </div>
-    </main>
-  );
+      <p className="mt-6 text-center text-[10px] uppercase tracking-[.24em] text-foreground/45">Lifegram · Tus momentos, tu comunidad</p>
+    </div>
+  </main>;
 }
